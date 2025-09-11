@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project.name }} - Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .schema-tree ul {
+            padding-left: 20px;
+        }
+        .schema-tree li {
+            list-style-type: none;
+        }
+        .table-name {
+            cursor: pointer;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>{{ project.name }}</h1>
+        <a href="{% url 'ui:dashboard' %}"> &laquo; Back to Dashboard</a>
+        <hr>
+
+        <h2>Connections</h2>
+        <div class="row">
+            {% for conn in connections %}
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between">
+                        <span>{{ conn.name }} ({{ conn.get_db_type_display }})</span>
+                        <span id="status-{{ conn.id }}"></span>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Host:</strong> {{ conn.host }}:{{ conn.port }}</p>
+                        <p><strong>Database:</strong> {{ conn.dbname }}</p>
+                        <p><strong>User:</strong> {{ conn.username }}</p>
+                        <button class="btn btn-sm btn-info" onclick="testConnection({{ conn.id }})">Test Connection</button>
+                        <button class="btn btn-sm btn-primary" onclick="discoverSchema({{ conn.id }})">Discover Schema</button>
+                    </div>
+                    <div class="card-footer">
+                        <h5>Schema</h5>
+                        <div id="schema-{{ conn.id }}" class="schema-tree">
+                            {% with snapshot=conn.schema_snapshots.first %}
+                                {% if snapshot %}
+                                    {% include "ui/partials/schema_tree.html" with schema=snapshot.schema %}
+                                {% else %}
+                                    <p>No schema discovered yet. Click "Discover Schema" to begin.</p>
+                                {% endif %}
+                            {% endwith %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script>
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        const csrftoken = getCookie('csrftoken');
+
+        async function testConnection(connectionId) {
+            const statusEl = document.getElementById(`status-${connectionId}`);
+            statusEl.textContent = 'Testing...';
+            statusEl.className = 'text-muted';
+
+            const response = await fetch(`/ui/connections/${connectionId}/test/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrftoken },
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'text-success';
+            } else {
+                statusEl.textContent = 'Failed';
+                statusEl.className = 'text-danger';
+                alert(`Connection Test Failed:\n${data.message}`);
+            }
+        }
+
+        async function discoverSchema(connectionId) {
+            const schemaContainer = document.getElementById(`schema-${connectionId}`);
+            schemaContainer.innerHTML = '<p>Discovering schema...</p>';
+
+            const response = await fetch(`/ui/connections/${connectionId}/discover-schema/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrftoken },
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                // This is a naive implementation that just reloads the page to show the new schema.
+                // A better implementation would use the returned schema data to dynamically
+                // build the tree without a page reload.
+                window.location.reload();
+            } else {
+                schemaContainer.innerHTML = `<p class="text-danger">Failed to discover schema.</p>`;
+                alert(`Schema Discovery Failed:\n${data.message}`);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_NAME=app_db
+      - DB_USER=app_user
+      - DB_PASSWORD=app_password
+      - DB_HOST=db
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DJANGO_SETTINGS_MODULE=datamigration_project.settings
+      - DMIGRATE_FERNET_KEY=TSVEoB3S10C0mBmsA2IhLIPcoWIw9YD8qwnkVlWPLM8=
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=app_db
+      - POSTGRES_USER=app_user
+      - POSTGRES_PASSWORD=app_password
+
+  redis:
+    image: redis:7
+
+  worker:
+    build: .
+    command: celery -A datamigration_project worker -l info
+    volumes:
+      - .:/app
+    environment:
+      - DB_NAME=app_db
+      - DB_USER=app_user
+      - DB_PASSWORD=app_password
+      - DB_HOST=db
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DJANGO_SETTINGS_MODULE=datamigration_project.settings
+      - DMIGRATE_FERNET_KEY=TSVEoB3S10C0mBmsA2IhLIPcoWIw9YD8qwnkVlWPLM8=
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  postgres_data:
