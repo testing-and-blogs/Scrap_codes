@@ -46,3 +46,16 @@ class BaseConnector(ABC):
             columns, types, constraints, etc.
         """
         pass
+
+    @abstractmethod
+    def get_row_count(self, table_name: str) -> int:
+        """
+        Gets the total number of rows in a given table.
+
+        Args:
+            table_name: The name of the table.
+
+        Returns:
+            The total row count as an integer.
+        """
+        pass

@@ -56,3 +56,15 @@ class PostgresConnector(BaseConnector):
             schema_data['tables'].append(table_info)
 
         return schema_data
+
+    def get_row_count(self, table_name: str) -> int:
+        """
+        Gets the total row count for a table in PostgreSQL.
+        """
+        engine = self.get_engine()
+        with engine.connect() as connection:
+            # Using text() is important for security and to prevent SQL injection,
+            # although less of a risk here as table_name comes from our own schema discovery.
+            # A more robust solution might use SQLAlchemy's Table object.
+            result = connection.execute(text(f'SELECT COUNT(*) FROM "{table_name}"'))
+            return result.scalar_one()

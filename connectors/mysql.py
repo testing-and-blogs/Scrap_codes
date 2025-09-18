@@ -56,3 +56,12 @@ class MySqlConnector(BaseConnector):
             schema_data['tables'].append(table_info)
 
         return schema_data
+
+    def get_row_count(self, table_name: str) -> int:
+        """
+        Gets the total row count for a table in MySQL.
+        """
+        engine = self.get_engine()
+        with engine.connect() as connection:
+            result = connection.execute(text(f"SELECT COUNT(*) FROM `{table_name}`"))
+            return result.scalar_one()

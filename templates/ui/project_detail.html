@@ -102,6 +102,39 @@
             </div>
         </div>
 
+        <hr class="my-5">
+
+        <!-- Saved Mappings & Jobs Section -->
+        <h2>Saved Mappings & Jobs</h2>
+        <div class="row">
+            <div class="col">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Saved Mappings</h5>
+                        {% if mappings %}
+                        <ul class="list-group">
+                            {% for mapping in mappings %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                {{ mapping.name }}
+                                <form action="{% url 'ui:start_migration' mapping.id %}" method="post">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-primary">Start Migration</button>
+                                </form>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <p class="text-muted">No mappings saved yet.</p>
+                        {% endif %}
+
+                        <h5 class="card-title mt-4">Migration Jobs</h5>
+                        {# This is a placeholder; a real implementation would fetch jobs #}
+                        <p class="text-muted">Job history will be displayed here.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- DDL Preview Modal -->
         <div class="modal fade" id="ddl-modal" tabindex="-1">
             <div class="modal-dialog modal-lg">

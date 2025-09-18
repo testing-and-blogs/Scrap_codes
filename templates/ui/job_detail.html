@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job #{{ job.id }} Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .status-badge { font-size: 0.9rem; }
+        .status-PENDING { background-color: #6c757d; }
+        .status-RUNNING { background-color: #0d6efd; }
+        .status-SUCCESS { background-color: #198754; }
+        .status-FAILED { background-color: #dc3545; }
+        .status-PAUSED { background-color: #ffc107; color: #000 !important; }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Job #{{ job.id }} Details</h1>
+            <a href="{% url 'ui:project_detail' job.mapping_config.project.id %}">&laquo; Back to Project</a>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                Job Overview
+            </div>
+            <div class="card-body">
+                <p><strong>Mapping:</strong> {{ job.mapping_config.name }}</p>
+                <p><strong>Status:</strong> <span class="badge status-badge status-{{ job.status }}">{{ job.get_status_display }}</span></p>
+                <p><strong>Created:</strong> {{ job.created_at }}</p>
+                <p><strong>Finished:</strong> {{ job.finished_at|default:"N/A" }}</p>
+                {% if job.error_message %}
+                    <p class="text-danger"><strong>Error:</strong> {{ job.error_message }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                Chunks
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            <th>Chunk ID</th>
+                            <th>Table</th>
+                            <th>Offset</th>
+                            <th>Limit</th>
+                            <th>Processed Rows</th>
+                            <th>Status</th>
+                            <th>Error</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for chunk in job.chunks.all %}
+                        <tr>
+                            <td>{{ chunk.id }}</td>
+                            <td>{{ chunk.table_mapping.source_table_name }}</td>
+                            <td>{{ chunk.offset }}</td>
+                            <td>{{ chunk.limit }}</td>
+                            <td>{{ chunk.processed_rows }}</td>
+                            <td><span class="badge status-badge status-{{ chunk.status }}">{{ chunk.get_status_display }}</span></td>
+                            <td class="text-danger"><small>{{ chunk.error_message|default:"" }}</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Refresh the page every 5 seconds if the job is in a non-terminal state
+        const jobStatus = "{{ job.status }}";
+        const terminalStates = ["SUCCESS", "FAILED", "PAUSED"];
+        if (!terminalStates.includes(jobStatus)) {
+            setTimeout(() => {
+                window.location.reload();
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

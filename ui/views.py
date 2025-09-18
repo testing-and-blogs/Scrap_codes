@@ -58,12 +58,14 @@ def project_detail_view(request, project_id: int):
     and the latest schema snapshot for each connection.
     """
     project = get_object_or_404(Project, pk=project_id, owner=request.user)
-    # Using prefetch_related to optimize the query for schema_snapshots
+    # Using prefetch_related to optimize queries
     connections = project.connections.all().prefetch_related('schema_snapshots')
+    mappings = project.mapping_configs.all()
 
     context = {
         'project': project,
         'connections': connections,
+        'mappings': mappings,
     }
     return render(request, 'ui/project_detail.html', context)
 
@@ -95,9 +97,12 @@ def discover_schema_view(request, connection_id: int):
 
 import json
 from django.db import transaction
+from django.shortcuts import redirect
 from django.views.decorators.http import require_http_methods
 from mapping.models import MappingConfig, TableMapping, ColumnMapping
 from mapping.services import generate_ddl
+from jobs.models import MigrationJob
+from jobs.tasks import start_migration_job
 
 @login_required
 @require_http_methods(["POST"])
@@ -198,3 +203,43 @@ def preview_ddl_view(request, mapping_id: int):
         return JsonResponse({'success': True, 'ddl': ddl_string})
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def start_migration_view(request, mapping_id: int):
+    """
+    Creates a MigrationJob and kicks off the Celery task to run it.
+    """
+    mapping_config = get_object_or_404(MappingConfig, pk=mapping_id, project__owner=request.user)
+
+    # Create the job record
+    job = MigrationJob.objects.create(
+        mapping_config=mapping_config,
+        status=MigrationJob.Status.PENDING
+    )
+
+    # Dispatch the background task
+    start_migration_job.delay(job.id)
+
+    # Redirect to the new job's detail page
+    return redirect('ui:job_detail', job_id=job.id)
+
+
+@login_required
+@require_http_methods(["GET"])
+def job_detail_view(request, job_id: int):
+    """
+    Displays the status and details of a single migration job.
+    """
+    job = get_object_or_404(
+        MigrationJob.objects.prefetch_related('chunks'),
+        pk=job_id,
+        mapping_config__project__owner=request.user
+    )
+
+    context = {
+        'job': job
+    }
+
+    return render(request, 'ui/job_detail.html', context)
