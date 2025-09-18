@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project.name }} - Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .schema-tree ul {
+            padding-left: 20px;
+        }
+        .schema-tree li {
+            list-style-type: none;
+        }
+        .table-name {
+            cursor: pointer;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>{{ project.name }}</h1>
+        <a href="{% url 'ui:dashboard' %}"> &laquo; Back to Dashboard</a>
+        <hr>
+
+        <h2>Connections</h2>
+        <div class="row">
+            {% for conn in connections %}
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between">
+                        <span>{{ conn.name }} ({{ conn.get_db_type_display }})</span>
+                        <span id="status-{{ conn.id }}"></span>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Host:</strong> {{ conn.host }}:{{ conn.port }}</p>
+                        <p><strong>Database:</strong> {{ conn.dbname }}</p>
+                        <p><strong>User:</strong> {{ conn.username }}</p>
+                        <button class="btn btn-sm btn-info" onclick="testConnection({{ conn.id }})">Test Connection</button>
+                        <button class="btn btn-sm btn-primary" onclick="discoverSchema({{ conn.id }})">Discover Schema</button>
+                    </div>
+                    <div class="card-footer">
+                        <h5>Schema</h5>
+                        <div id="schema-{{ conn.id }}" class="schema-tree">
+                            {% with snapshot=conn.schema_snapshots.first %}
+                                {% if snapshot %}
+                                    {% include "ui/partials/schema_tree.html" with schema=snapshot.schema conn_id=conn.id %}
+                                {% else %}
+                                    <p>No schema discovered yet. Click "Discover Schema" to begin.</p>
+                                {% endif %}
+                            {% endwith %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <hr class="my-5">
+
+        <!-- Mapping Configuration Section -->
+        <h2>Data Mapping</h2>
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-5">
+                        <label for="source-connection-select" class="form-label">Source Connection</label>
+                        <select id="source-connection-select" class="form-select">
+                            <option selected disabled>Choose...</option>
+                            {% for conn in connections %}<option value="{{ conn.id }}">{{ conn.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <label for="target-connection-select" class="form-label">Target Connection</label>
+                        <select id="target-connection-select" class="form-select">
+                            <option selected disabled>Choose...</option>
+                            {% for conn in connections %}<option value="{{ conn.id }}">{{ conn.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button id="load-schema-btn" class="btn btn-secondary w-100">Load Schema</button>
+                    </div>
+                </div>
+                <hr>
+                <div id="mapping-ui-container" style="display: none;">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                             <label for="mapping-name-input" class="form-label">Mapping Name</label>
+                            <input type="text" id="mapping-name-input" class="form-control" placeholder="e.g., Customers Prod-to-Staging">
+                        </div>
+                        <div class="col-md-6 d-flex align-items-end">
+                            <button id="save-mapping-btn" class="btn btn-success me-2">Save Mapping</button>
+                            <button id="preview-ddl-btn" class="btn btn-outline-primary">Preview DDL</button>
+                        </div>
+                    </div>
+                    <div id="mapping-grid-container">
+                        <!-- Mapping grid will be rendered here by JavaScript -->
+                        <p class="text-muted">Select connections and load schema to begin mapping.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DDL Preview Modal -->
+        <div class="modal fade" id="ddl-modal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">DDL Preview</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <pre><code id="ddl-content" class="language-sql"></code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CSRF Token Setup ---
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        const csrftoken = getCookie('csrftoken');
+
+        // --- State ---
+        let currentSchema = null;
+        let currentMappingConfigId = null;
+
+        // --- Connection/Schema Handlers (from previous sprint) ---
+        async function testConnection(connectionId) {
+            const statusEl = document.getElementById(`status-${connectionId}`);
+            statusEl.textContent = 'Testing...';
+            statusEl.className = 'text-muted';
+
+            const response = await fetch(`/ui/connections/${connectionId}/test/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrftoken },
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'text-success';
+            } else {
+                statusEl.textContent = 'Failed';
+                statusEl.className = 'text-danger';
+                alert(`Connection Test Failed:\n${data.message}`);
+            }
+        }
+
+        async function discoverSchema(connectionId) {
+            const schemaContainer = document.getElementById(`schema-${connectionId}`);
+            schemaContainer.innerHTML = '<p>Discovering schema...</p>';
+
+            const response = await fetch(`/ui/connections/${connectionId}/discover-schema/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrftoken },
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                window.location.reload();
+            } else {
+                schemaContainer.innerHTML = `<p class="text-danger">Failed to discover schema.</p>`;
+                alert(`Schema Discovery Failed:\n${data.message}`);
+            }
+        }
+
+        // --- Mapping UI Logic ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const loadSchemaBtn = document.getElementById('load-schema-btn');
+            const saveMappingBtn = document.getElementById('save-mapping-btn');
+            const previewDdlBtn = document.getElementById('preview-ddl-btn');
+            const sourceConnSelect = document.getElementById('source-connection-select');
+            const mappingUiContainer = document.getElementById('mapping-ui-container');
+
+            loadSchemaBtn.addEventListener('click', () => {
+                const sourceConnId = sourceConnSelect.value;
+                if (!sourceConnId || sourceConnId === 'Choose...') {
+                    alert('Please select a source connection.');
+                    return;
+                }
+
+                const schemaJsonElement = document.getElementById(`schema-json-${sourceConnId}`);
+                if (!schemaJsonElement) {
+                    alert('Schema not found for the selected source. Please discover it first.');
+                    return;
+                }
+
+                try {
+                    currentSchema = JSON.parse(schemaJsonElement.textContent);
+                    renderMappingGrid(currentSchema);
+                    mappingUiContainer.style.display = 'block';
+                } catch(e) {
+                    alert('Failed to parse schema data from the page.');
+                    console.error(e);
+                }
+            });
+
+            saveMappingBtn.addEventListener('click', saveMapping);
+            previewDdlBtn.addEventListener('click', previewDdl);
+        });
+
+        function renderMappingGrid(schema) {
+            const container = document.getElementById('mapping-grid-container');
+            if (!schema || !schema.tables) {
+                container.innerHTML = '<p class="text-danger">Invalid schema format.</p>';
+                return;
+            }
+
+            let gridHtml = `
+                <table class="table table-bordered table-sm">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Source Table</th>
+                            <th>Source Column</th>
+                            <th>Source Type</th>
+                            <th>Target Table</th>
+                            <th>Target Column</th>
+                            <th>Target Type</th>
+                            <th>Ignore</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            schema.tables.forEach(table => {
+                table.columns.forEach((column, index) => {
+                    gridHtml += `
+                        <tr data-source-table="${table.name}" data-source-column="${column.name}">
+                            ${index === 0 ? `<td rowspan="${table.columns.length}">${table.name}</td>` : ''}
+                            <td>${column.name}</td>
+                            <td><small>${column.type}</small></td>
+                            <td><input type="text" class="form-control form-control-sm" value="${table.name}"></td>
+                            <td><input type="text" class="form-control form-control-sm" value="${column.name}"></td>
+                            <td><input type="text" class="form-control form-control-sm" value="${column.type}"></td>
+                            <td><input type="checkbox" class="form-check-input"></td>
+                        </tr>
+                    `;
+                });
+            });
+
+            gridHtml += '</tbody></table>';
+            container.innerHTML = gridHtml;
+        }
+
+        async function saveMapping() {
+            const mappingName = document.getElementById('mapping-name-input').value;
+            if (!mappingName) {
+                alert('Please enter a name for the mapping.');
+                return;
+            }
+
+            const payload = {
+                name: mappingName,
+                project_id: {{ project.id }},
+                source_connection_id: document.getElementById('source-connection-select').value,
+                target_connection_id: document.getElementById('target-connection-select').value,
+                tables: []
+            };
+
+            const tables = {};
+            document.querySelectorAll('#mapping-grid-container tbody tr').forEach(row => {
+                const sourceTable = row.dataset.sourceTable;
+                if (!tables[sourceTable]) {
+                    tables[sourceTable] = {
+                        source_table_name: sourceTable,
+                        target_table_name: row.querySelector('td:nth-child(4) input').value,
+                        include_in_migration: true, // Add control for this later
+                        columns: []
+                    };
+                }
+                tables[sourceTable].columns.push({
+                    source_column_name: row.dataset.sourceColumn,
+                    target_column_name: row.querySelector('td:nth-child(5) input').value,
+                    target_data_type: row.querySelector('td:nth-child(6) input').value,
+                    is_ignored: row.querySelector('td:nth-child(7) input').checked
+                });
+            });
+            payload.tables = Object.values(tables);
+
+            const response = await fetch("{% url 'ui:save_mapping_config' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                currentMappingConfigId = data.mapping_id;
+                alert('Mapping saved successfully!');
+            } else {
+                alert(`Error saving mapping: ${data.message}`);
+            }
+        }
+
+        async function previewDdl() {
+            if (!currentMappingConfigId) {
+                alert('Please save the mapping before previewing DDL.');
+                return;
+            }
+
+            const response = await fetch(`/ui/mappings/${currentMappingConfigId}/preview-ddl/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrftoken },
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                document.getElementById('ddl-content').textContent = data.ddl;
+                new bootstrap.Modal(document.getElementById('ddl-modal')).show();
+            } else {
+                alert(`Error generating DDL: ${data.message}`);
+            }
+        }
+
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

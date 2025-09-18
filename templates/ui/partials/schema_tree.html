@@ -1,0 +1,37 @@
+{{ schema|json_script:"schema-json-"|add:conn_id }}
+
+{% if schema.tables %}
+    <ul>
+    {% for table in schema.tables %}
+        <li>
+            <strong class="table-name" onclick="toggleTable('table-{{ forloop.counter }}-{{ table.name }}')">
+                &#x25B6; {{ table.name }}
+            </strong>
+            <ul id="table-{{ forloop.counter }}-{{ table.name }}" style="display: none;">
+                {% for column in table.columns %}
+                    <li>
+                        {{ column.name }}
+                        <small class="text-muted">({{ column.type }})</small>
+                    </li>
+                {% endfor %}
+            </ul>
+        </li>
+    {% endfor %}
+    </ul>
+{% else %}
+    <p>Schema contains no tables.</p>
+{% endif %}
+
+<script>
+    function toggleTable(tableId) {
+        const tableUl = document.getElementById(tableId);
+        const tableToggle = tableUl.previousElementSibling;
+        if (tableUl.style.display === 'none') {
+            tableUl.style.display = 'block';
+            tableToggle.innerHTML = `&#x25BC; ${tableToggle.textContent.slice(2)}`;
+        } else {
+            tableUl.style.display = 'none';
+            tableToggle.innerHTML = `&#x25B6; ${tableToggle.textContent.slice(2)}`;
+        }
+    }
+</script>

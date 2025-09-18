@@ -1,0 +1,7 @@
+Django>=4.0,<5.0
+celery
+redis
+psycopg2-binary
+mysql-connector-python
+cryptography
+SQLAlchemy
