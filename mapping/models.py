@@ -62,6 +62,7 @@ class ColumnMapping(models.Model):
     target_data_type = models.CharField(max_length=100)
     transform_expression = models.TextField(blank=True, null=True)
     is_ignored = models.BooleanField(default=False)
+    is_primary_key = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ('table_mapping', 'source_column_name')

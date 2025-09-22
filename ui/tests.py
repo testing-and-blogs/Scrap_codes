@@ -5,7 +5,8 @@ from unittest.mock import patch, MagicMock
 import json
 
 from core.models import Project, Connection
-from mapping.models import SchemaSnapshot
+from mapping.models import MappingConfig, SchemaSnapshot
+from jobs.models import SyncSchedule
 
 User = get_user_model()
 
@@ -138,3 +139,37 @@ class UIConnectionAPIViewTest(TestCase):
 
         self.assertEqual(response_test.status_code, 404)
         self.assertEqual(response_discover.status_code, 404)
+
+
+class UISyncViewTest(TestCase):
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username='testuser', password='password')
+        project = Project.objects.create(name='Test Project', owner=cls.user)
+        source_conn = Connection.objects.create(project=project, name='Src', db_type='postgres', host='h', port=1, username='u', dbname='d')
+        target_conn = Connection.objects.create(project=project, name='Tgt', db_type='postgres', host='h', port=1, username='u', dbname='d')
+        cls.mapping = MappingConfig.objects.create(
+            project=project, name='Test Mapping',
+            source_connection=source_conn, target_connection=target_conn
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='testuser', password='password')
+
+    def test_save_sync_schedule_view(self):
+        url = reverse('ui:save_sync_schedule', args=[self.mapping.id])
+        post_data = {
+            'is_active': 'on',
+            'frequency': SyncSchedule.Frequency.DAILY,
+            'sync_key_column': 'modified_date'
+        }
+        response = self.client.post(url, data=post_data)
+
+        self.assertRedirects(response, reverse('ui:project_detail', args=[self.mapping.project.id]))
+        self.assertTrue(SyncSchedule.objects.filter(mapping_config=self.mapping).exists())
+        schedule = SyncSchedule.objects.get(mapping_config=self.mapping)
+        self.assertTrue(schedule.is_active)
+        self.assertEqual(schedule.frequency, SyncSchedule.Frequency.DAILY)
+        self.assertEqual(schedule.sync_key_column, 'modified_date')

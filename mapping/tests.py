@@ -66,6 +66,9 @@ class MappingAPIViewsTest(TestCase):
         }
 
     def test_save_mapping_config(self):
+        # Add the is_primary_key flag to the payload
+        self.valid_payload['tables'][0]['columns'][0]['is_primary_key'] = True
+
         url = reverse('ui:save_mapping_config')
         response = self.client.post(url, data=json.dumps(self.valid_payload), content_type='application/json')
 
@@ -75,6 +78,9 @@ class MappingAPIViewsTest(TestCase):
         self.assertTrue(MappingConfig.objects.filter(name="My API Mapping").exists())
         self.assertEqual(TableMapping.objects.count(), 1)
         self.assertEqual(ColumnMapping.objects.count(), 1)
+
+        pk_column = ColumnMapping.objects.get(source_column_name='id')
+        self.assertTrue(pk_column.is_primary_key)
 
     def test_load_mapping_config(self):
         # First, save a mapping

@@ -41,5 +41,18 @@ services:
       - db
       - redis
 
+  beat:
+    build: .
+    command: celery -A datamigration_project beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=datamigration_project.settings
+    depends_on:
+      - db
+      - redis
+
 volumes:
   postgres_data:

@@ -59,3 +59,15 @@ class BaseConnector(ABC):
             The total row count as an integer.
         """
         pass
+
+    @abstractmethod
+    def upsert(self, table_name: str, data: list[dict], pk_column: str):
+        """
+        Inserts new rows or updates existing rows in the target database.
+
+        Args:
+            table_name: The name of the target table.
+            data: A list of dictionaries, where each dictionary represents a row.
+            pk_column: The name of the primary key column to use for conflict resolution.
+        """
+        pass

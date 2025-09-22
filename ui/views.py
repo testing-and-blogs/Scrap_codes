@@ -60,7 +60,7 @@ def project_detail_view(request, project_id: int):
     project = get_object_or_404(Project, pk=project_id, owner=request.user)
     # Using prefetch_related to optimize queries
     connections = project.connections.all().prefetch_related('schema_snapshots')
-    mappings = project.mapping_configs.all()
+    mappings = project.mapping_configs.all().prefetch_related('sync_schedule')
 
     context = {
         'project': project,
@@ -101,7 +101,7 @@ from django.shortcuts import redirect
 from django.views.decorators.http import require_http_methods
 from mapping.models import MappingConfig, TableMapping, ColumnMapping
 from mapping.services import generate_ddl
-from jobs.models import MigrationJob
+from jobs.models import MigrationJob, SyncSchedule
 from jobs.tasks import start_migration_job
 
 @login_required
@@ -143,7 +143,8 @@ def save_mapping_config_view(request):
                     source_column_name=column_data['source_column_name'],
                     target_column_name=column_data['target_column_name'],
                     target_data_type=column_data['target_data_type'],
-                    is_ignored=column_data.get('is_ignored', False)
+                    is_ignored=column_data.get('is_ignored', False),
+                    is_primary_key=column_data.get('is_primary_key', False)
                 )
 
         return JsonResponse({'success': True, 'mapping_id': mapping_config.id, 'message': 'Mapping saved successfully.'})
@@ -243,3 +244,36 @@ def job_detail_view(request, job_id: int):
     }
 
     return render(request, 'ui/job_detail.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def save_sync_schedule_view(request, mapping_id: int):
+    """
+    Creates or updates a SyncSchedule for a given MappingConfig.
+    """
+    mapping_config = get_object_or_404(MappingConfig, pk=mapping_id, project__owner=request.user)
+
+    try:
+        is_active = request.POST.get('is_active') == 'on'
+        frequency = request.POST.get('frequency')
+        sync_key_column = request.POST.get('sync_key_column')
+
+        if not frequency or not sync_key_column:
+            # A proper form validation would be better here
+            return redirect(mapping_config.project.get_absolute_url()) # Or some error page
+
+        SyncSchedule.objects.update_or_create(
+            mapping_config=mapping_config,
+            defaults={
+                'is_active': is_active,
+                'frequency': frequency,
+                'sync_key_column': sync_key_column,
+            }
+        )
+        # Redirect back to the project page
+        return redirect('ui:project_detail', project_id=mapping_config.project.id)
+
+    except Exception as e:
+        # Proper error handling should be added
+        return redirect('ui:project_detail', project_id=mapping_config.project.id)

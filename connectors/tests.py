@@ -6,6 +6,7 @@ from cryptography.fernet import Fernet
 from core.models import Project, Connection
 from .factory import get_connector
 from .postgres import PostgresConnector
+from .models import ConnectorPlugin
 from .mysql import MySqlConnector
 from .base import BaseConnector
 
@@ -55,7 +56,9 @@ class ConnectorFactoryTest(TestCase):
         unsupported_connection = self.postgres_connection
         unsupported_connection.db_type = 'unsupported_db_type'
 
-        with self.assertRaisesMessage(ValueError, "Unsupported database type: 'unsupported_db_type'"):
+        # The new logic should raise a more specific error message
+        expected_message = "A connector plugin for the type 'unsupported_db_type' is not installed."
+        with self.assertRaisesMessage(ValueError, expected_message):
             get_connector(unsupported_connection)
 
 
@@ -94,3 +97,36 @@ class ConnectorImplementationTest(TestCase):
 
         expected_uri = "mysql+mysqlconnector://test_user:test_password@test_host:9999/test_db"
         mock_create_engine.assert_called_once_with(expected_uri)
+
+
+@override_settings(DMIGRATE_FERNET_KEY=TEST_FERNET_KEY)
+class ConnectorPluginTest(TestCase):
+
+    @classmethod
+    def setUpTestData(cls):
+        # The data migration should have already run, but we can call it if needed
+        # or just verify the state. For now, we assume migrations run.
+        User = get_user_model()
+        user = User.objects.create_user(username='testuser', password='password')
+        project = Project.objects.create(name='Test Project', owner=user)
+        cls.postgres_connection = Connection.objects.create(
+            project=project, name="Test Postgres Conn", db_type=Connection.DbType.POSTGRES,
+            host="pg_host", port=5432, username="pguser", dbname="pgdb", password="pgpassword"
+        )
+
+    def test_plugins_are_populated(self):
+        """Tests that the data migration created the initial plugins."""
+        self.assertTrue(ConnectorPlugin.objects.filter(plugin_key='postgres').exists())
+        self.assertTrue(ConnectorPlugin.objects.filter(plugin_key='mysql').exists())
+
+    def test_get_connector_for_disabled_plugin_raises_error(self):
+        """
+        Tests that get_connector raises a ValueError if the plugin is disabled.
+        """
+        # Disable the PostgreSQL plugin
+        pg_plugin = ConnectorPlugin.objects.get(plugin_key='postgres')
+        pg_plugin.is_enabled = False
+        pg_plugin.save()
+
+        with self.assertRaisesMessage(ValueError, "The 'PostgreSQL' connector is currently disabled by an administrator."):
+            get_connector(self.postgres_connection)

@@ -112,17 +112,52 @@
                     <div class="card-body">
                         <h5 class="card-title">Saved Mappings</h5>
                         {% if mappings %}
-                        <ul class="list-group">
+                        <div class="accordion" id="mappings-accordion">
                             {% for mapping in mappings %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                {{ mapping.name }}
-                                <form action="{% url 'ui:start_migration' mapping.id %}" method="post">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-sm btn-primary">Start Migration</button>
-                                </form>
-                            </li>
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-{{ mapping.id }}">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ mapping.id }}">
+                                        {{ mapping.name }}
+                                    </button>
+                                </h2>
+                                <div id="collapse-{{ mapping.id }}" class="accordion-collapse collapse" data-bs-parent="#mappings-accordion">
+                                    <div class="accordion-body">
+                                        <div class="d-flex justify-content-between">
+                                            <p>Manage migration and sync for this mapping.</p>
+                                            <form action="{% url 'ui:start_migration' mapping.id %}" method="post" class="d-inline">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-primary">Run Full Migration</button>
+                                            </form>
+                                        </div>
+                                        <hr>
+                                        <h6>Synchronization Schedule</h6>
+                                        <form action="{% url 'ui:save_sync_schedule' mapping.id %}" method="post">
+                                            {% csrf_token %}
+                                            <div class="form-check form-switch mb-2">
+                                                <input class="form-check-input" type="checkbox" name="is_active" id="sync-active-{{ mapping.id }}" {% if mapping.sync_schedule.is_active %}checked{% endif %}>
+                                                <label class="form-check-label" for="sync-active-{{ mapping.id }}">Enable Sync</label>
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-md-6 mb-2">
+                                                    <label for="sync-freq-{{ mapping.id }}" class="form-label">Frequency</label>
+                                                    <select name="frequency" id="sync-freq-{{ mapping.id }}" class="form-select form-select-sm">
+                                                        <option value="HOURLY" {% if mapping.sync_schedule.frequency == 'HOURLY' %}selected{% endif %}>Hourly</option>
+                                                        <option value="DAILY" {% if mapping.sync_schedule.frequency == 'DAILY' %}selected{% endif %}>Daily</option>
+                                                        <option value="WEEKLY" {% if mapping.sync_schedule.frequency == 'WEEKLY' %}selected{% endif %}>Weekly</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-6 mb-2">
+                                                    <label for="sync-key-{{ mapping.id }}" class="form-label">Sync Key Column</label>
+                                                    <input type="text" name="sync_key_column" id="sync-key-{{ mapping.id }}" class="form-control form-control-sm" value="{{ mapping.sync_schedule.sync_key_column|default:'' }}" placeholder="e.g., updated_at">
+                                                </div>
+                                            </div>
+                                            <button type="submit" class="btn btn-sm btn-outline-success mt-2">Save Sync Settings</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
                             {% endfor %}
-                        </ul>
+                        </div>
                         {% else %}
                         <p class="text-muted">No mappings saved yet.</p>
                         {% endif %}
@@ -265,6 +300,7 @@
                             <th>Target Table</th>
                             <th>Target Column</th>
                             <th>Target Type</th>
+                            <th>PK</th>
                             <th>Ignore</th>
                         </tr>
                     </thead>
@@ -278,10 +314,11 @@
                             ${index === 0 ? `<td rowspan="${table.columns.length}">${table.name}</td>` : ''}
                             <td>${column.name}</td>
                             <td><small>${column.type}</small></td>
-                            <td><input type="text" class="form-control form-control-sm" value="${table.name}"></td>
-                            <td><input type="text" class="form-control form-control-sm" value="${column.name}"></td>
-                            <td><input type="text" class="form-control form-control-sm" value="${column.type}"></td>
-                            <td><input type="checkbox" class="form-check-input"></td>
+                            <td><input type="text" class="form-control form-control-sm target-table-name" value="${table.name}"></td>
+                            <td><input type="text" class="form-control form-control-sm target-column-name" value="${column.name}"></td>
+                            <td><input type="text" class="form-control form-control-sm target-data-type" value="${column.type}"></td>
+                            <td><input type="radio" name="pk-radio-${table.name}" class="form-check-input pk-radio"></td>
+                            <td><input type="checkbox" class="form-check-input ignore-checkbox"></td>
                         </tr>
                     `;
                 });
@@ -319,9 +356,10 @@
                 }
                 tables[sourceTable].columns.push({
                     source_column_name: row.dataset.sourceColumn,
-                    target_column_name: row.querySelector('td:nth-child(5) input').value,
-                    target_data_type: row.querySelector('td:nth-child(6) input').value,
-                    is_ignored: row.querySelector('td:nth-child(7) input').checked
+                    target_column_name: row.querySelector('.target-column-name').value,
+                    target_data_type: row.querySelector('.target-data-type').value,
+                    is_primary_key: row.querySelector('.pk-radio').checked,
+                    is_ignored: row.querySelector('.ignore-checkbox').checked
                 });
             });
             payload.tables = Object.values(tables);

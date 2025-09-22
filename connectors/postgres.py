@@ -1,4 +1,5 @@
-from sqlalchemy import create_engine, text, Engine, inspect
+from sqlalchemy import create_engine, text, Engine, inspect, Table, MetaData
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from .base import BaseConnector
 
 
@@ -68,3 +69,26 @@ class PostgresConnector(BaseConnector):
             # A more robust solution might use SQLAlchemy's Table object.
             result = connection.execute(text(f'SELECT COUNT(*) FROM "{table_name}"'))
             return result.scalar_one()
+
+    def upsert(self, table_name: str, data: list[dict], pk_column: str):
+        """
+        Performs an 'upsert' operation on a PostgreSQL database.
+        """
+        if not data:
+            return
+
+        engine = self.get_engine()
+        metadata = MetaData()
+        table = Table(table_name, metadata, autoload_with=engine)
+
+        insert_stmt = pg_insert(table).values(data)
+
+        # Create the ON CONFLICT...DO UPDATE statement
+        update_cols = {col.name: col for col in insert_stmt.excluded if not col.primary_key}
+        upsert_stmt = insert_stmt.on_conflict_do_update(
+            index_elements=[pk_column],
+            set_=update_cols
+        )
+
+        with engine.connect() as connection, connection.begin():
+            connection.execute(upsert_stmt)

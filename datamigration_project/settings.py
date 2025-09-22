@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 import sys
 from pathlib import Path
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,6 +41,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Third-party apps
+    "django_celery_beat",
     # Local apps
     "core.apps.CoreConfig",
     "connectors.apps.ConnectorsConfig",
@@ -153,3 +156,11 @@ CELERY_TIMEZONE = 'UTC'
 
 # Fernet key for encrypting credentials
 DMIGRATE_FERNET_KEY = os.environ.get('DMIGRATE_FERNET_KEY')
+
+# Celery Beat Schedules
+CELERY_BEAT_SCHEDULE = {
+    'schedule-due-syncs': {
+        'task': 'jobs.tasks.schedule_due_syncs',
+        'schedule': crontab(minute='*'),  # Run every minute
+    },
+}

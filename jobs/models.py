@@ -49,3 +49,47 @@ class MigrationChunk(models.Model):
 
     class Meta:
         ordering = ['created_at']
+
+
+class SyncSchedule(models.Model):
+    """
+    Defines a recurring synchronization schedule for a mapping configuration.
+    """
+    class Frequency(models.TextChoices):
+        HOURLY = 'HOURLY', 'Hourly'
+        DAILY = 'DAILY', 'Daily'
+        WEEKLY = 'WEEKLY', 'Weekly'
+
+    mapping_config = models.OneToOneField('mapping.MappingConfig', on_delete=models.CASCADE, related_name='sync_schedule')
+    is_active = models.BooleanField(default=True)
+    frequency = models.CharField(max_length=20, choices=Frequency.choices)
+
+    sync_key_column = models.CharField(max_length=255, help_text="The column used to detect new/updated rows (e.g., 'id' or 'updated_at').")
+    last_sync_value = models.CharField(max_length=255, null=True, blank=True, help_text="The last value of the sync key that was processed.")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Sync schedule for {self.mapping_config.name} ({self.frequency})"
+
+    class Meta:
+        ordering = ['-updated_at']
+
+
+class SyncJob(models.Model):
+    """
+    Represents a single run of a synchronization schedule.
+    This allows for detailed tracking of each sync execution.
+    """
+    sync_schedule = models.ForeignKey(SyncSchedule, on_delete=models.CASCADE, related_name='sync_jobs')
+    status = models.CharField(max_length=20, choices=MigrationJob.Status.choices, default=MigrationJob.Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.TextField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Sync Job #{self.id} for {self.sync_schedule.mapping_config.name} ({self.status})"
+
+    class Meta:
+        ordering = ['-created_at']
